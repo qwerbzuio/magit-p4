@@ -179,20 +179,24 @@
 ;; add keyboard hook to finish log edition with C-c C-c
 (add-hook 'server-switch-hook 'magit-p4/server-edit-end-keys)
 
-(defun magit-p4/insert-job (&optional job)
+(defun magit-p4/insert-job (&optional job jobs-entry-title)
   "Inserts job reference in a buffer.
   The insertion assumes that it should be 'Jobs:' entry in the buffer.
   If not - it inserts such at the current point of the buffer. Then it asks (if
   applied interactively) for a job id using `p4` completion function.
   Finally it inserts the id under `Jobs:` entry."
   (interactive
-   (list (p4-read-arg-string "Job: " "" 'job)))
+   (list (p4-read-arg-string "Job: " "" 'job)
+         (if current-prefix-arg
+             (read-from-minibuffer "Jobs section title: ")
+           "Jobs")))
   (when job
-    (let* ((jobs-entry (save-excursion (re-search-backward "^Jobs:" nil t)))
-           (jobs-entry (if jobs-entry jobs-entry (re-search-forward "^Jobs:" nil t))))
+    (let* ((jobs-section-regexp (format "^%s:" jobs-entry-title))
+           (jobs-entry (save-excursion (re-search-backward jobs-section-regexp nil t)))
+           (jobs-entry (if jobs-entry jobs-entry (re-search-forward jobs-section-regexp nil t))))
       (if (not jobs-entry)
           ;; it inserts "Jobs:" entry in the CURRENT point!
-          (insert "\nJobs:\n\t")
+          (insert (format "\n%s:\n\t" jobs-entry-title))
         ;; move to past the end of `Jobs:` entry
         (progn
           (goto-char jobs-entry)
