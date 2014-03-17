@@ -94,7 +94,7 @@
   ;; git-p4 invokes editor using values of P4EDITOR or GIT_EDITOR variables
   ;; here we temporarily set P4EDITOR (it has precedence in git-p4) to "emacsclient"
   (let ((p4editor (getenv "P4EDITOR"))
-        (magit-fun (if sync-mode 'magit-run-git-sync 'magit-run-git-async)))
+        (magit-fun (if sync-mode 'magit-run-git 'magit-run-git-async)))
     (setenv "P4EDITOR" "emacsclient")
     (funcall magit-fun "p4" "submit"
              (if (and git-dir (not (search "--git-dir=" magit-custom-options)))
@@ -109,15 +109,17 @@
   (magit-p4/submit nil))
 
 (defun magit-p4/squeeze-commits ()
-  (let ((repo-to-clone (magit-get-top-dir))
-        (default-directory (make-temp-file "foo")))
+  (let* ((repo-to-clone (magit-get-top-dir))
+         (tmp-repo-dir (make-temp-file "foo" t))
+         (git-dir (concat (file-name-as-directory tmp-repo-dir) ".git"))
+         (git-dir-arg (format "--git-dir=%s" git-dir)))
     ;; create a temporary clone with required commits
-    (magit-run-git-sync "clone" (format "file://%s" repo-to-clone))
-    (magit-run-git-sync "fetch" "origin" "p4/master")
+    (magit-run-git "clone" (format "file://%s" repo-to-clone) tmp-repo-dir)
+    (magit-run-git git-dir-arg "fetch" "origin" "p4/master")
     ;; squeeze all required commits into one
-    (magit-run-git-sync "reset" "--soft" "FETCH_HEAD")
-    (magit-run-git-sync "commit" "-m\"$(git log --format=%B --reverse HEAD..HEAD@{1})\"")
-    default-directory))
+    (magit-run-git git-dir-arg "reset" "--soft" "FETCH_HEAD")
+    (magit-run-git git-dir-arg "commit" "-m\"$(git log --format=%B --reverse HEAD..HEAD@{1})\"")
+    git-dir))
 
 ;;;###autoload
 (defun magit-p4-submit-as-one (&optional do-not-touch-repo)
@@ -125,10 +127,11 @@
    If `DO-NOT-TOUCH-REPO` parameter is true all job will be
    done in temporar clone of the original Git repo."
   (interactive)
-  (let ((tmp-repo-dir (magit-p4/squeeze-commit)))
-    (magit-p4/submit (concat (file-name-as-directory tmp-repo-dir) ".git") t)
+  (let ((tmp-repo-dir (magit-p4/squeeze-commits)))
+    (magit-p4/submit tmp-repo-dir t)
+    (message "magit-p4: deleting temporary Git repo (%s)" tmp-repo-dir)
     (delete-directory tmp-repo-dir t)
-    (magit-run-git-sync "p4" "rebase")))
+    (magit-run-git "p4" "rebase")))
 
 ;;; Utilities
 
