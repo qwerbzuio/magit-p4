@@ -52,8 +52,8 @@
   (interactive
    (append (list (p4-read-arg-string "Depot path: " "//" 'filespec))
            (if (and (not (search "destination=" magit-custom-options))
-                    current-prefix-arg)
-             (read-directory-name "Target directory: ")
+                  current-prefix-arg)
+               (read-directory-name "Target directory: ")
              nil)))
   (magit-run-git-async "p4" "clone" (cons depot-path magit-custom-options)))
 
@@ -87,16 +87,48 @@
   (when server-buffer-clients
     (local-set-key (kbd "C-c C-c") 'server-edit)))
 
+(defun magit-p4/submit (git-dir &optional sync-mode)
+  "Runs git-p4 submit within given GIT directory.
+   If SYNC-MODE is true all Magit command will be called in
+   synchronised (editor blocking) mode."
+  ;; git-p4 invokes editor using values of P4EDITOR or GIT_EDITOR variables
+  ;; here we temporarily set P4EDITOR (it has precedence in git-p4) to "emacsclient"
+  (let ((p4editor (getenv "P4EDITOR"))
+        (magit-fun (if sync-mode 'magit-run-git-sync 'magit-run-git-async)))
+    (setenv "P4EDITOR" "emacsclient")
+    (funcall magit-fun "p4" "submit"
+             (if (and git-dir (not (search "--git-dir=" magit-custom-options)))
+                 (append magit-custom-options (format "--git-dir=%s" git-dir))
+               magit-custom-options))
+    (setenv "P4EDITOR" p4editor)))
+
 ;;;###autoload
 (defun magit-p4-submit ()
   "Runs git-p4 submit."
   (interactive)
-  ;; git-p4 invokes editor using values of P4EDITOR or GIT_EDITOR variables
-  ;; here we temporarily set P4EDITOR (it has precedence in git-p4) to "emacsclient"
-  (let ((p4editor (getenv "P4EDITOR")))
-    (setenv "P4EDITOR" "emacsclient")
-    (magit-run-git-async "p4" "submit" magit-custom-options)
-    (setenv "P4EDITOR" p4editor)))
+  (magit-p4/submit nil))
+
+(defun magit-p4/squeeze-commits ()
+  (let ((repo-to-clone (magit-get-top-dir))
+        (default-directory (make-temp-file "foo")))
+    ;; create a temporary clone with required commits
+    (magit-run-git-sync "clone" (format "file://%s" repo-to-clone))
+    (magit-run-git-sync "fetch" "origin" "p4/master")
+    ;; squeeze all required commits into one
+    (magit-run-git-sync "reset" "--soft" "FETCH_HEAD")
+    (magit-run-git-sync "commit" "-m\"$(git log --format=%B --reverse HEAD..HEAD@{1})\"")
+    default-directory))
+
+;;;###autoload
+(defun magit-p4-submit-as-one (&optional do-not-touch-repo)
+  "Runs git-p4 submit treating all recent commits as one.
+   If `DO-NOT-TOUCH-REPO` parameter is true all job will be
+   done in temporar clone of the original Git repo."
+  (interactive)
+  (let ((tmp-repo-dir (magit-p4/squeeze-commit)))
+    (magit-p4/submit (concat (file-name-as-directory tmp-repo-dir) ".git") t)
+    (delete-directory tmp-repo-dir t)
+    (magit-run-git-sync "p4" "rebase")))
 
 ;;; Utilities
 
@@ -125,32 +157,35 @@
                                  ("S" "Submit" magit-key-mode-popup-p4-submit)
                                  ("s" "Sync" magit-key-mode-popup-p4-sync))))
                    (p4-sync  (actions (("s" "Sync" magit-p4-sync)))
-                             (switches (("-b" "Branch" "--branch")
-                                        ("-db" "Detect branches" "--detect-branches")
+                             (switches (("-db" "Detect branches" "--detect-branches")
                                         ("-s" "Silent" "--silent")
                                         ("-ib" "import Labels" "--import-labels")
                                         ("-il" "import Local" "--import-local")
                                         ("-p" "Keep path" "--keep-path")
                                         ("-c" "Client spec" "--use-client-spec")))
-                             (arguments (("=c" "Changes files" "--changesfile=" read-from-minibuffer)
+                             (arguments (("-b" "Branch" "--branch" magit-read-rev)
+                                         ("=c" "Changes files" "--changesfile=" (lambda () (read-file-name "Changes file: ")))
                                          ("=m" "Max changes" "--max-changes=" read-from-minibuffer))))
                    (p4-clone (actions (("c" "Clone" magit-p4-clone)))
                              (switches (("-b" "Bare clone" "--bare")))
                              (arguments (("=d" "Destination directory" "--destination=" read-directory-name)
-                                         ("=/" "Exclude depot path" "-/ " read-from-minibuffer))))
-                   (p4-submit (actions (("s" "Submit all" magit-p4-submit)))
+                                         ("=/" "Exclude depot path" "-/ "
+                                          (lambda (prompt) (p4-read-arg-string prompt "//" 'filespec))))))
+                   (p4-submit (actions (("1" "Submit as one changelist" magit-p4-submit-as-one)
+                                        ("s" "Submit as separate change lists (standard)" magit-p4-submit)))
                               (switches (("-M" "Detect renames" "-M")
                                          ("-u" "Preserve user" "--preserve-user")
                                          ("-l" "Export labels" "--export-labels")
                                          ("-n" "Dry run" "--dry-run")
                                          ("-p" "Prepare P4 only" "--prepare-p4-only")))
-                              (arguments (("=o" "Upstream location to submit" "--origin=" read-from-minibuffer)
+                              (arguments (("=o" "Upstream location to submit" "--origin="
+                                           magit-read-rev-with-default)
                                           ("=c" "Conflict resolution (ask|skip|quit)" "--conflict="
                                            (lambda (prompt)
                                              (first (completing-read-multiple prompt '("ask" "skip" "quit")))))
-                                          ("=b" "Sync with branch after" "--branch=" read-from-minibuffer))))
-                   (p4-rebase (actions (("r" "Rebase" magit-p4-rebase)))
-                              (switches (("-l" "Import labels" "--import-labels")))))))
+                                          ("=b" "Sync with branch after" "--branch=" magit-read-rev)))
+                              (p4-rebase (actions (("r" "Rebase" magit-p4-rebase)))
+                                         (switches (("-l" "Import labels" "--import-labels"))))))))
   (dolist (group-def p4-groups)
     (let* ((group (first group-def))
            (keys (cdr group-def))
@@ -172,9 +207,9 @@
           (apply 'magit-key-mode-insert-argument (cons group argument)))
         (dolist (action actions)
           (apply 'magit-key-mode-insert-action (cons group action))))
-        ;; generate and bind the menu popup function
+      ;; generate and bind the menu popup function
       (magit-key-mode-generate group)))
-    (magit-key-mode-insert-action 'dispatch "4" "git-p4" 'magit-key-mode-popup-p4))
+  (magit-key-mode-insert-action 'dispatch "4" "git-p4" 'magit-key-mode-popup-p4))
 
 ;; add keyboard hook to finish log edition with C-c C-c
 (add-hook 'server-switch-hook 'magit-p4/server-edit-end-keys)
@@ -220,7 +255,7 @@
   :require 'magit-p4
   :keymap 'magit-p4-mode-map
   (or (derived-mode-p 'magit-mode)
-      (user-error "This mode only makes sense with magit"))
+     (user-error "This mode only makes sense with magit"))
   (when (called-interactively-p 'any)
     (magit-refresh)))
 
