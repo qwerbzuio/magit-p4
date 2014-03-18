@@ -210,19 +210,19 @@
                              (second (assoc 'switches keys))))
            (arguments (second (assoc 'arguments keys)))
            (actions (second (assoc 'actions keys))))
-      (message "group: %s %s" group actions)
       ;; (re-)create the group
       (magit-key-mode-add-group group)
       ;; magit so far is buggy here 'cause "arguments" group is not created by default
       (let ((options (assoc group magit-key-mode-groups)))
         (setcdr (last options) (list (list 'arguments)))
-        (dolist (switch switches)
-          (apply 'magit-key-mode-insert-switch (cons group switch)))
-        (assoc 'arguments options)
-        (dolist (argument arguments)
-          (apply 'magit-key-mode-insert-argument (cons group argument)))
-        (dolist (action actions)
-          (apply 'magit-key-mode-insert-action (cons group action))))
+        (dolist (opt (list (list 'switch switches)
+                           (list 'argument arguments)
+                           (list 'action actions)))
+          (pcase opt
+            (`(,sym ,args)
+             (let ((fun (intern (format "magit-key-mode-insert-%s" sym))))
+               (dolist (arg args)
+                 (apply fun (cons group arg))))))))
       ;; generate and bind the menu popup function
       (magit-key-mode-generate group)))
   (magit-key-mode-insert-action 'dispatch "4" "git-p4" 'magit-key-mode-popup-p4))
