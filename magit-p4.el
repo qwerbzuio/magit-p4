@@ -87,20 +87,42 @@
   (when server-buffer-clients
     (local-set-key (kbd "C-c C-c") 'server-edit)))
 
+(defun magit-p4/get-config (var)
+  (let* ((env-var (format "P4%s" (upcase var)))
+         (value (getenv env-var))
+         (result (if value
+                     (list 'env env-var value)
+                   (list 'git env-var (magit-get (format "git-p4.%s" var))))))
+    result))
+
 (defun magit-p4/submit (git-dir &optional sync-mode)
   "Runs git-p4 submit within given GIT directory.
    If SYNC-MODE is true all Magit command will be called in
    synchronised (editor blocking) mode."
   ;; git-p4 invokes editor using values of P4EDITOR or GIT_EDITOR variables
   ;; here we temporarily set P4EDITOR (it has precedence in git-p4) to "emacsclient"
-  (let ((p4editor (getenv "P4EDITOR"))
-        (magit-fun (if sync-mode 'magit-run-git 'magit-run-git-async)))
+  (let ((magit-fun (if sync-mode 'magit-run-git 'magit-run-git-async)) ; sync/async magit functin
+        (to-restore (list (list "P4EDITOR" (getenv "P4EDITOR"))))) ; list of env. vars to set & restore
+    ;; get P4 variables (from git-p4.* config or environment)
+    (dolist (var '("user" "password" "port" "host" "client"))
+      (let* ((value-spec (magit-p4/get-config var))
+             (var-val (pcase value-spec
+                        (`(,_ ,_ nil) nil)
+                        (`(env ,var ,val) (progn (append to-restore var)
+                                                 (list var val)))
+                        (`(git ,var ,val) (list var val)))))
+        ;; set environment P4 variables for to-be-spawned submit process
+        ;; which starts emacsclient
+        (when var-val
+          (setenv (first var-val) (second var-val)))))
     (setenv "P4EDITOR" "emacsclient")
     (funcall magit-fun "p4" "submit"
              (if (and git-dir (not (search "--git-dir=" magit-custom-options)))
                  (append magit-custom-options (format "--git-dir=%s" git-dir))
                magit-custom-options))
-    (setenv "P4EDITOR" p4editor)))
+    (dolist (pair to-restore)
+      (pcase pair
+        (`(,var ,val) (setenv var val))))))
 
 ;;;###autoload
 (defun magit-p4-submit ()
@@ -108,30 +130,21 @@
   (interactive)
   (magit-p4/submit nil))
 
-(defun magit-p4/squeeze-commits ()
-  (let* ((repo-to-clone (magit-get-top-dir))
-         (tmp-repo-dir (make-temp-file "foo" t))
-         (git-dir (concat (file-name-as-directory tmp-repo-dir) ".git"))
-         (git-dir-arg (format "--git-dir=%s" git-dir)))
-    ;; create a temporary clone with required commits
-    (magit-run-git "clone" (format "file://%s" repo-to-clone) tmp-repo-dir)
-    (magit-run-git git-dir-arg "fetch" "origin" "p4/master")
-    ;; squeeze all required commits into one
-    (magit-run-git git-dir-arg "reset" "--soft" "FETCH_HEAD")
-    (magit-run-git git-dir-arg "commit" "-m\"$(git log --format=%B --reverse HEAD..HEAD@{1})\"")
-    git-dir))
+(defun magit-p4/squeeze-commits (since)
+  "Squeezes all commits since SINCE to current HEAD into one."
+  (magit-run-git git-dir-arg "reset" "--soft" since)
+  (magit-run-git git-dir-arg "commit" "-m\"$(git log --format=%B --reverse HEAD..HEAD@{1})\""))
 
 ;;;###autoload
-(defun magit-p4-submit-as-one (&optional do-not-touch-repo)
+(defun magit-p4-submit-as-one ()
   "Runs git-p4 submit treating all recent commits as one.
-   If `DO-NOT-TOUCH-REPO` parameter is true all job will be
-   done in temporar clone of the original Git repo."
+   The Git repo will be rewritten - all commits since the last
+   registered in P4 will be squeezed (squashed) into one."
   (interactive)
-  (let ((tmp-repo-dir (magit-p4/squeeze-commits)))
-    (magit-p4/submit tmp-repo-dir t)
-    (message "magit-p4: deleting temporary Git repo (%s)" tmp-repo-dir)
-    (delete-directory tmp-repo-dir t)
-    (magit-run-git "p4" "rebase")))
+  (let ((last-submit (magit-get-string "show" "-s" "--format=%H" "p4/master")))
+    (when last-submit
+      (magit-p4/squeeze-commits last-submit)
+      (magit-p4/submit))))
 
 ;;; Utilities
 
