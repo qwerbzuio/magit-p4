@@ -199,9 +199,9 @@
                                           ("=c" "Conflict resolution (ask|skip|quit)" "--conflict="
                                            (lambda (prompt)
                                              (first (completing-read-multiple prompt '("ask" "skip" "quit")))))
-                                          ("=b" "Sync with branch after" "--branch=" magit-read-rev)))
-                              (p4-rebase (actions (("r" "Rebase" magit-p4-rebase)))
-                                         (switches (("-l" "Import labels" "--import-labels"))))))))
+                                          ("=b" "Sync with branch after" "--branch=" magit-read-rev))))
+                   (p4-rebase (actions (("r" "Rebase" magit-p4-rebase)))
+                              (switches (("-l" "Import labels" "--import-labels")))))))
   (dolist (group-def p4-groups)
     (let* ((group (first group-def))
            (keys (cdr group-def))
