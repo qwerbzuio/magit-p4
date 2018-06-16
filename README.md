@@ -53,5 +53,5 @@ While visiting *magit status* buffer press <kbd>4</kbd> and <kbd>`r`</kbd> key. 
 
 ### Submitting ###
 
-While visiting *magit status* buffer press <kbd>4</kbd> and <kbd>`r`</kbd> key. Additional switches are provided in submit submenu. Press <kbd>`s`</kbd> key to submit. A buffer will appear where you may add some more info
+While visiting *magit status* buffer press <kbd>4</kbd> and <kbd>`S`</kbd> key. Additional switches are provided in submit submenu. Press <kbd>`s`</kbd> key to submit. A buffer will appear where you may add some more info
 to submitted change-set log. Press <kbd>C-x</kbd><kbd>#</kbd> to confirm (`emacsclient` is used).
