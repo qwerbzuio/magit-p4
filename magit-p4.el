@@ -204,7 +204,7 @@ P4EDITOR and uses custom process filter `magit-p4-process-filter'."
               (?s "Shelve files only" "--shelve"))
   :options '((?o "Origin" "--origin=" magit-read-branch-or-commit)
              (?b "Sync with branch after submission" "--branch=" magit-read-branch)
-             (?N "Name of git branch to submit" " " magit-read-branch-or-commit)
+             (?N "Name of git branch to submit" "" magit-read-branch-or-commit)
              (?c "Conflict resolution (ask|skip|quit)" "--conflict="
                  (lambda (prompt &optional default)
                    (magit-completing-read prompt '("ask" "skip" "quit") nil nil nil nil default))))
