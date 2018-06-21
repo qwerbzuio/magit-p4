@@ -127,21 +127,28 @@
   "Filter used by `magit-p4-run-git-with-editor'."
   (with-current-buffer (process-buffer process)
     (magit-p4-process-yes-or-no-prompt process string)
-    (magit-p4-process-skip-or-quit process string)))
+    (magit-p4-process-skip-or-quit process string)
+    (let* ((inhibit-read-only t)
+           (case-fold-search t)
+           ;; filter errors and show them:
+           (string-list (-filter (lambda (item)
+                                   (string-match-p "error:" item))
+                                 (split-string-and-unquote string "[\n\r]+")))
+           (string (combine-and-quote-strings string-list "\n")))
+      ;; similar to magit-process-filter:
+      (goto-char (process-mark process))
+      (setq string (propertize string 'magit-section
+                               (process-get process 'section)))
+      (insert string)
+      (set-marker (process-mark process) (point)))))
 
 ;;;###autoload
 (defun magit-p4-run-git-with-editor (&rest args)
   "Similar to magit-run-git-with-editor, but also exports
 P4EDITOR and uses custom process filter `magit-p4-process-filter'."
   (let* ((process (with-editor "P4EDITOR"
-                   (apply #'magit-run-git-with-editor args)))
-         (old-filter (process-filter process)))
-
-    (set-process-filter
-     process
-     `(lambda (process str)
-        (magit-p4-process-filter process str)
-        (funcall ,old-filter process str)))
+                    (apply #'magit-run-git-with-editor args))))
+    (set-process-filter process #'magit-p4-process-filter)
     process))
 
 ;; Menu
