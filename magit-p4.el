@@ -89,6 +89,16 @@
   (interactive)
   (magit-p4-run-git-with-editor "p4" "submit" (magit-p4-submit-arguments)))
 
+(defun magit-p4-unshelve ()
+  "Unshelve changelist from perforce."
+  (interactive)
+  (magit-run-git "p4" "unshelve" (magit-p4-unshelve-arguments)))
+
+(defun magit-p4-read-shelvenumber (prompt &optional secondary-default)
+  (interactive)
+  (magit-completing-read "Shelvenumber" nil
+                         nil t nil nil nil nil))
+
 (defcustom magit-p4-process-yes-or-no-prompt-regexp "\\[\\(y\\)\\]es, \\[\\(n\\)\\]o"
   "Regexp matching yes-or-no prompt for git-p4."
   :group 'magit-p4
@@ -176,7 +186,8 @@ P4EDITOR and uses custom process filter `magit-p4-process-filter'."
   :actions '((?c "Clone" magit-p4-clone-popup)
              (?s "Sync" magit-p4-sync-popup)
              (?r "Rebase" magit-p4-rebase)
-             (?S "Submit" magit-p4-submit-popup)))
+             (?S "Submit" magit-p4-submit-popup)
+             (?u "Unshelve" magit-p4-unshelve-popup)))
 
 (defvar magit-p4-sync-clone-shared-options
   '((?b "Branch" "--branch=")
@@ -224,6 +235,12 @@ P4EDITOR and uses custom process filter `magit-p4-process-filter'."
   :options (append '((?d "Destination directory" "--destination=" read-directory-name))
                    magit-p4-sync-clone-shared-options)
   :actions '((?c "Clone" magit-p4-clone)))
+
+(magit-define-popup magit-p4-unshelve-popup
+  "Unshelve changelist from p4"
+  :switches ()
+  :options '((?s "Shelvenumber" "" magit-p4-read-shelvenumber))
+  :actions '((?u "Unshelve" magit-p4-unshelve)))
 
 (magit-define-popup-action 'magit-dispatch-popup ?4 "Git P4" 'magit-p4-popup ?!)
 
