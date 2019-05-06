@@ -141,8 +141,7 @@
     (let* ((inhibit-read-only t)
            (case-fold-search t)
            ;; filter errors and show them:
-           (string-list (-filter (lambda (item)
-                                   (string-match-p "error:" item))
+           (string-list (-filter t
                                  (split-string-and-unquote string "[\n\r]+")))
            (string (combine-and-quote-strings string-list "\n")))
       ;; similar to magit-process-filter:
